@@ -9,7 +9,7 @@ import binascii
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
-
+from dotenv import load_dotenv
 import requests
 from xrpl.core import addresscodec
 
