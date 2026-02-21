@@ -1,0 +1,36 @@
+# 環境変数ファイル
+.env
+.env.local
+.env.*.local
+
+# Python キャッシュ
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 仮想環境 (Virtual Environments)
+venv/
+.venv/
+env/
+bin/
+lib/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# OS設定ファイル
+.DS_Store
+Thumbs.db
+
+# ログファイル
+*.log
