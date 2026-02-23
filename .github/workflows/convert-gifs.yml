@@ -17,7 +17,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install supabase boto3
+        run: pip install supabase boto3 python-dotenv>=1.0.1
 
       - name: Convert pending GIFs
         env:
