@@ -27,7 +27,7 @@ XRPL_RPC = "https://xrplcluster.com/"
 # NFTokenID デコード用定数
 MASK32 = 0xFFFFFFFF
 
-MAX_BATCH_SIZE = 30
+MAX_BATCH_SIZE = 90
 
 @dataclass(frozen=True)
 class NFTokenIDDecoded:
