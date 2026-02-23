@@ -32,10 +32,15 @@ output_path = '/tmp/output.mp4'
 
 for page in pages:
     for obj in page.get('Contents', []):
-        src_key = obj['Key']                              # convert/ABCD.gif or convert/ABCD.mp4
-        filename = src_key.split('/', 1)[1]               # ABCD.gif
-        hex_uri = filename.rsplit('.', 1)[0]               # ABCD
-        ext = filename.rsplit('.', 1)[1]                   # gif or mp4
+        src_key = obj['Key']
+        filename = src_key.split('/', 1)[1]
+        
+        # ファイル名がない or 拡張子がない場合はスキップ
+        if not filename or '.' not in filename:
+            continue
+        
+        hex_uri = filename.rsplit('.', 1)[0]
+        ext = filename.rsplit('.', 1)[1].lower()
 
         try:
             s3.download_file(R2_BUCKET, src_key, input_path)
