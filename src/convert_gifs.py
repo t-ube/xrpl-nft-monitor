@@ -17,31 +17,6 @@ R2_ACCESS_KEY = os.environ.get("R2_ACCESS_KEY")
 R2_SECRET_KEY = os.environ.get("R2_SECRET_KEY")
 R2_BUCKET = os.environ.get("R2_BUCKET")
 
-IPFS_GATEWAYS = [
-    'https://cloudflare-ipfs.com/ipfs/',
-    'https://ipfs.io/ipfs/',
-    'https://dweb.link/ipfs/',
-]
-
-def ipfs_to_http(url, gateway_index=0):
-    if url.startswith('ipfs://'):
-        cid_path = url[7:]
-        return IPFS_GATEWAYS[gateway_index] + cid_path
-    if url.startswith('ar://'):
-        return 'https://arweave.net/' + url[5:]
-    return url
-
-def download_with_retry(url, dest, max_retries=3):
-    for i in range(max_retries):
-        download_url = ipfs_to_http(url, gateway_index=i % len(IPFS_GATEWAYS))
-        try:
-            urllib.request.urlretrieve(download_url, dest)
-            return
-        except Exception as e:
-            print(f"  Retry {i+1}/{max_retries} failed ({download_url}): {e}")
-            time.sleep(2)
-    raise Exception(f"All gateways failed for {url}")
-
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 s3 = boto3.client('s3',
@@ -50,47 +25,61 @@ s3 = boto3.client('s3',
     aws_secret_access_key=R2_SECRET_KEY,
 )
 
-res = supabase.table('uri_cache') \
-    .select('uri, image_url, thumbnail_r2_key') \
-    .like('image_url', '%.gif') \
-    .not_.is_('thumbnail_r2_key', 'null') \
-    .is_('video_r2_key', 'null') \
-    .limit(20) \
-    .execute()
+paginator = s3.get_paginator('list_objects_v2')
+pages = paginator.paginate(Bucket=R2_BUCKET, Prefix='convert/')
+input_path = '/tmp/input'
+output_path = '/tmp/output.mp4'
 
-for item in res.data or []:
-    input_path = '/tmp/input.gif'
-    output_path = '/tmp/output.mp4'
+for page in pages:
+    for obj in page.get('Contents', []):
+        src_key = obj['Key']                              # convert/ABCD.gif or convert/ABCD.mp4
+        filename = src_key.split('/', 1)[1]               # ABCD.gif
+        hex_uri = filename.rsplit('.', 1)[0]               # ABCD
+        ext = filename.rsplit('.', 1)[1]                   # gif or mp4
 
-    try:
-        # ダウンロード
-        download_with_retry(item['image_url'], input_path)
+        try:
+            s3.download_file(R2_BUCKET, src_key, input_path)
 
-        # 変換
-        subprocess.run([
-            'ffmpeg', '-y', '-i', input_path,
-            '-movflags', 'faststart',
-            '-pix_fmt', 'yuv420p',
-            '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
-            '-c:v', 'libx264', '-crf', '23',
-            output_path
-        ], check=True)
+            if ext == 'gif':
+                # GIF → MP4
+                subprocess.run([
+                    'ffmpeg', '-y', '-i', input_path,
+                    '-movflags', 'faststart',
+                    '-pix_fmt', 'yuv420p',
+                    '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+                    '-c:v', 'libx264', '-crf', '23',
+                    output_path
+                ], check=True)
+            else:
+                # MP4/WebM等 → 軽量MP4にトランスコード
+                subprocess.run([
+                    'ffmpeg', '-y', '-i', input_path,
+                    '-movflags', 'faststart',
+                    '-pix_fmt', 'yuv420p',
+                    '-vf', "scale='trunc(min(iw,512)/2)*2:trunc(min(ih,512)/2)*2'",
+                    '-c:v', 'libx264', '-crf', '28',
+                    '-preset', 'medium',
+                    '-an',               # 音声除去（サムネ用途なら不要）
+                    '-t', '30',          # 最大30秒に制限
+                    output_path
+                ], check=True)
 
-        # R2アップロード
-        mp4_key = item['uri'] + '.mp4'
-        s3.upload_file(output_path, R2_BUCKET, mp4_key,
-                       ExtraArgs={'ContentType': 'video/mp4'})
+            mp4_key = f'{hex_uri}.mp4'
+            s3.upload_file(output_path, R2_BUCKET, mp4_key,
+                           ExtraArgs={'ContentType': 'video/mp4'})
 
-        # DB更新
-        supabase.table('uri_cache') \
-            .update({'video_r2_key': mp4_key}) \
-            .eq('uri', item['uri']) \
-            .execute()
+            supabase.table('uri_cache') \
+                .update({'video_r2_key': mp4_key}) \
+                .eq('uri', hex_uri) \
+                .execute()
 
-        print(f"Converted: {item['uri']}")
-    except Exception as e:
-        print(f"Failed: {item['uri']} - {e}")
-    finally:
-        for p in [input_path, output_path]:
-            if os.path.exists(p):
-                os.remove(p)
+            # 変換済み原本を削除
+            s3.delete_object(Bucket=R2_BUCKET, Key=src_key)
+
+            print(f"Converted: {hex_uri} ({ext} → mp4)")
+        except Exception as e:
+            print(f"Failed: {hex_uri} - {e}")
+        finally:
+            for p in [input_path, output_path]:
+                if os.path.exists(p):
+                    os.remove(p)
