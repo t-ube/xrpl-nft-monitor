@@ -5,15 +5,9 @@ import os
 import boto3
 from supabase import create_client
 from dotenv import load_dotenv
+import time
 
 load_dotenv()
-
-def ipfs_to_http(url):
-    if url.startswith('ipfs://'):
-        return 'https://cloudflare-ipfs.com/ipfs/' + url[7:]
-    if url.startswith('ar://'):
-        return 'https://arweave.net/' + url[5:]
-    return url
 
 # 環境変数
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -22,6 +16,31 @@ R2_ENDPOINT = os.environ.get("R2_ENDPOINT")
 R2_ACCESS_KEY = os.environ.get("R2_ACCESS_KEY")
 R2_SECRET_KEY = os.environ.get("R2_SECRET_KEY")
 R2_BUCKET = os.environ.get("R2_BUCKET")
+
+IPFS_GATEWAYS = [
+    'https://cloudflare-ipfs.com/ipfs/',
+    'https://ipfs.io/ipfs/',
+    'https://dweb.link/ipfs/',
+]
+
+def ipfs_to_http(url, gateway_index=0):
+    if url.startswith('ipfs://'):
+        cid_path = url[7:]
+        return IPFS_GATEWAYS[gateway_index] + cid_path
+    if url.startswith('ar://'):
+        return 'https://arweave.net/' + url[5:]
+    return url
+
+def download_with_retry(url, dest, max_retries=3):
+    for i in range(max_retries):
+        download_url = ipfs_to_http(url, gateway_index=i % len(IPFS_GATEWAYS))
+        try:
+            urllib.request.urlretrieve(download_url, dest)
+            return
+        except Exception as e:
+            print(f"  Retry {i+1}/{max_retries} failed ({download_url}): {e}")
+            time.sleep(2)
+    raise Exception(f"All gateways failed for {url}")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -45,8 +64,7 @@ for item in res.data or []:
 
     try:
         # ダウンロード
-        download_url = ipfs_to_http(item['image_url'])
-        urllib.request.urlretrieve(download_url, input_path)
+        download_with_retry(item['image_url'], input_path)
 
         # 変換
         subprocess.run([
