@@ -73,8 +73,26 @@ for page in pages:
             s3.upload_file(output_path, R2_BUCKET, mp4_key,
                            ExtraArgs={'ContentType': 'video/mp4'})
 
+            # 動画のみサムネイル生成（GIFはWorker側で生成済み）
+            update_data = {'video_r2_key': mp4_key}
+
+            if ext != 'gif':
+                thumb_path = '/tmp/thumb.webp'
+                subprocess.run([
+                    'ffmpeg', '-y', '-i', input_path,
+                    '-ss', '1',
+                    '-frames:v', '1',
+                    '-vf', "scale='trunc(min(iw,512)/2)*2:trunc(min(ih,512)/2)*2'",
+                    thumb_path
+                ], check=True)
+
+                thumb_key = f'{hex_uri}.webp'
+                s3.upload_file(thumb_path, R2_BUCKET, thumb_key,
+                            ExtraArgs={'ContentType': 'image/webp'})
+                update_data['thumbnail_r2_key'] = thumb_key
+
             supabase.table('uri_cache') \
-                .update({'video_r2_key': mp4_key}) \
+                .update(update_data) \
                 .eq('uri', hex_uri) \
                 .execute()
 
