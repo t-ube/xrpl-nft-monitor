@@ -31,7 +31,7 @@ CREATE INDEX idx_modify_owner ON nft_modify_history(owner);
 CREATE INDEX idx_modify_taxon ON nft_modify_history(issuer, taxon);
 CREATE INDEX idx_modify_ledger_index ON nft_modify_history(ledger_index DESC);
 CREATE INDEX idx_modify_tx_date ON nft_modify_history(tx_date DESC);
-
+CREATE INDEX idx_modify_cursor ON nft_modify_history(ledger_index, tx_hash);
 
 -- NFTokenMint 履歴テーブル
 CREATE TABLE nft_mint_history (
@@ -54,3 +54,4 @@ CREATE INDEX idx_mint_issuer ON nft_mint_history(issuer);
 CREATE INDEX idx_mint_owner ON nft_mint_history(owner);
 CREATE INDEX idx_mint_ledger_index ON nft_mint_history(ledger_index DESC);
 CREATE INDEX idx_mint_tx_date ON nft_mint_history(tx_date DESC);
+CREATE INDEX idx_mint_cursor ON nft_mint_history(ledger_index, tx_hash);
