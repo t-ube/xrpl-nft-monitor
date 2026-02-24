@@ -14,7 +14,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # 失敗したURIを取得（古いものから）
 res = supabase.table('uri_cache') \
-    .select('uri') \
+    .select('uri, retry_count') \
     .eq('status', 'failed') \
     .lt('retry_count', 3) \
     .limit(50) \
