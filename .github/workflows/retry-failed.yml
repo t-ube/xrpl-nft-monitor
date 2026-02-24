@@ -17,5 +17,5 @@ jobs:
       - run: python src/retry_failed.py
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          WORKER_URL: ${{ secrets.WORKER_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          CACHE_API_URL: ${{ secrets.CACHE_API_URL }}

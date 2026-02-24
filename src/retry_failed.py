@@ -9,7 +9,6 @@ load_dotenv()
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 CACHE_API_URL = os.environ.get("CACHE_API_URL")
-WORKER_URL = os.environ.get("WORKER_URL")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -35,5 +34,5 @@ for item in res.data:
         .execute()
 
 # Workerにバッチリクエスト → Queueに再投入される
-r = requests.post(f"{WORKER_URL}/api/cache/batch", json={"hex_uris": hex_uris})
+r = requests.post(f"{CACHE_API_URL}/api/cache/batch", json={"hex_uris": hex_uris})
 print(f"Re-queued {len(hex_uris)} items: {r.status_code}")
