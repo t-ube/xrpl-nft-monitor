@@ -1,0 +1,21 @@
+# .github/workflows/retry-failed.yml
+name: Retry Failed URIs
+on:
+  repository_dispatch:
+    types: [cron-job2]
+  workflow_dispatch:
+
+jobs:
+  retry:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install supabase requests python-dotenv>=1.0.1
+      - run: python src/retry_failed.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          WORKER_URL: ${{ secrets.WORKER_URL }}
