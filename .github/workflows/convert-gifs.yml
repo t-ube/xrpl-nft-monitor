@@ -2,7 +2,7 @@
 name: Convert GIFs to MP4
 on:
   repository_dispatch:
-    types: [cron-job]
+    types: [cron-job2]
   workflow_dispatch:
 
 jobs:
