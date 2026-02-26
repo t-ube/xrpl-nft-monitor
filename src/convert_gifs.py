@@ -74,22 +74,20 @@ for page in pages:
                            ExtraArgs={'ContentType': 'video/mp4'})
 
             # 動画のみサムネイル生成（GIFはWorker側で生成済み）
-            update_data = {'video_r2_key': mp4_key}
+            update_data = {'video_r2_key': mp4_key, 'status': 'completed'}
 
-            if ext != 'gif':
-                thumb_path = '/tmp/thumb.webp'
-                subprocess.run([
-                    'ffmpeg', '-y', '-i', input_path,
-                    '-ss', '1',
-                    '-frames:v', '1',
-                    '-vf', "scale='trunc(min(iw,512)/2)*2:trunc(min(ih,512)/2)*2'",
-                    thumb_path
-                ], check=True)
+            thumb_path = '/tmp/thumb.webp'
+            subprocess.run([
+                'ffmpeg', '-y', '-i', input_path,
+                '-frames:v', '1',
+                '-vf', "scale='trunc(min(iw,512)/2)*2:trunc(min(ih,512)/2)*2'",
+                thumb_path
+            ], check=True)
 
-                thumb_key = f'{hex_uri}.webp'
-                s3.upload_file(thumb_path, R2_BUCKET, thumb_key,
-                            ExtraArgs={'ContentType': 'image/webp'})
-                update_data['thumbnail_r2_key'] = thumb_key
+            thumb_key = f'{hex_uri}.webp'
+            s3.upload_file(thumb_path, R2_BUCKET, thumb_key,
+                        ExtraArgs={'ContentType': 'image/webp'})
+            update_data['thumbnail_r2_key'] = thumb_key
 
             supabase.table('uri_cache') \
                 .update(update_data) \
@@ -103,6 +101,6 @@ for page in pages:
         except Exception as e:
             print(f"Failed: {hex_uri} - {e}")
         finally:
-            for p in [input_path, output_path]:
+            for p in [input_path, output_path, '/tmp/thumb.webp']:
                 if os.path.exists(p):
                     os.remove(p)
