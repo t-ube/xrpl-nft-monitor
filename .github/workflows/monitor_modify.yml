@@ -25,4 +25,4 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           CACHE_API_URL: ${{ secrets.CACHE_API_URL }}
-        run: python src/monitor_modify.py
+        run: python src/monitor_modify_rpc.py
