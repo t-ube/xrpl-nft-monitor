@@ -107,7 +107,7 @@ def get_last_ledger_index() -> int:
     """Supabaseから最後に処理したledger_indexを取得"""
     response = requests.get(
         f"{SUPABASE_URL}/rest/v1/monitor_state",
-        params={"key": "eq.last_modify_ledger_index_0", "select": "value"},
+        params={"key": "eq.last_modify_ledger_index", "select": "value"},
         headers={
             "apikey": SUPABASE_KEY,
             "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -124,7 +124,7 @@ def update_last_ledger_index(ledger_index: int) -> None:
     """Supabaseのledger_indexを更新"""
     response = requests.patch(
         f"{SUPABASE_URL}/rest/v1/monitor_state",
-        params={"key": "eq.last_modify_ledger_index_0"},
+        params={"key": "eq.last_modify_ledger_index"},
         headers={
             "apikey": SUPABASE_KEY,
             "Authorization": f"Bearer {SUPABASE_KEY}",
