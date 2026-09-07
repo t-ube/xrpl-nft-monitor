@@ -255,21 +255,6 @@ def extract_minted_nftoken_id(tx):
     nft_id = new_ids.pop()
     return nft_id, final_map[nft_id]
 
-def old_extract(tx):
-    meta = tx.get("meta", tx.get("metaData", {}))
-    for node in meta.get("AffectedNodes", []):
-        for action in ["CreatedNode", "ModifiedNode"]:
-            item = node.get(action)
-            if not item or item.get("LedgerEntryType") != "NFTokenPage":
-                continue
-            fields = item.get("NewFields", item.get("FinalFields", {}))
-            prev = {t["NFToken"]["NFTokenID"]
-                    for t in item.get("PreviousFields", {}).get("NFTokens", [])}
-            for t in fields.get("NFTokens", []):
-                if t["NFToken"]["NFTokenID"] not in prev:
-                    return t["NFToken"]["NFTokenID"], t["NFToken"].get("URI", "")
-    return None
-
 # =============================================================================
 # キャッシュAPI
 # =============================================================================
@@ -347,14 +332,8 @@ def process_transactions(
             continue
 
         try:
-            o = old_extract(tx)
-            n = extract_minted_nftoken_id(tx)
-            if (o or (None,))[0] != (n or (None,))[0]:
-                print(f"  MISMATCH old={o and o[0]} new={n and n[0]}")
-                # ページ分割のケース。metaを保存しておくと後で検証できる
-                json.dump(meta, open(f"mismatch_{tx['hash'][:8]}.json", "w"), indent=2)
+            result = extract_minted_nftoken_id(tx)
             
-            result = n
             if not result:
                 print(f"  [{tx_hash[:8]}...] Could not extract NFTokenID")
                 continue
