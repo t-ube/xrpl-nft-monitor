@@ -15,6 +15,7 @@ from typing import Any
 from dotenv import load_dotenv
 import requests
 from xrpl.core import addresscodec
+import json
 
 load_dotenv()
 
@@ -227,34 +228,47 @@ def get_ledger_transactions(ledger_index: int) -> tuple[list[dict], int]:
     raise last_error or RuntimeError(f"All RPC endpoints failed for ledger {ledger_index}")
 
 
-def extract_minted_nftoken_id(tx: dict) -> tuple[str, str] | None:
+def extract_minted_nftoken_id(tx):
     """
     トランザクションのmetaから新規発行されたNFTokenIDとURIを抽出する
     """
     meta = tx.get("meta", tx.get("metaData", {}))
-    affected_nodes = meta.get("AffectedNodes", [])
 
-    for node in affected_nodes:
-        for node_action in ["CreatedNode", "ModifiedNode"]:
-            item = node.get(node_action)
+    final_map, previous_ids = {}, set()
+
+    for node in meta.get("AffectedNodes", []):
+        item = node.get("CreatedNode") or node.get("ModifiedNode") or {}
+        if item.get("LedgerEntryType") != "NFTokenPage":
+            continue
+
+        fields = item.get("NewFields") or item.get("FinalFields") or {}
+        for t in fields.get("NFTokens", []):
+            final_map[t["NFToken"]["NFTokenID"]] = t["NFToken"].get("URI", "")
+
+        for t in item.get("PreviousFields", {}).get("NFTokens", []):
+            previous_ids.add(t["NFToken"]["NFTokenID"])
+
+    new_ids = set(final_map) - previous_ids
+    if len(new_ids) != 1:
+        return None
+
+    nft_id = new_ids.pop()
+    return nft_id, final_map[nft_id]
+
+def old_extract(tx):
+    meta = tx.get("meta", tx.get("metaData", {}))
+    for node in meta.get("AffectedNodes", []):
+        for action in ["CreatedNode", "ModifiedNode"]:
+            item = node.get(action)
             if not item or item.get("LedgerEntryType") != "NFTokenPage":
                 continue
-
-            final_fields = item.get("NewFields", item.get("FinalFields", {}))
-            nftokens = final_fields.get("NFTokens", [])
-
-            previous_fields = item.get("PreviousFields", {})
-            previous_tokens = previous_fields.get("NFTokens", [])
-            previous_ids = {t["NFToken"]["NFTokenID"] for t in previous_tokens}
-
-            for t in nftokens:
-                nft_id = t["NFToken"]["NFTokenID"]
-                nft_uri = t["NFToken"].get("URI", "")
-                if nft_id not in previous_ids:
-                    return nft_id, nft_uri
-
+            fields = item.get("NewFields", item.get("FinalFields", {}))
+            prev = {t["NFToken"]["NFTokenID"]
+                    for t in item.get("PreviousFields", {}).get("NFTokens", [])}
+            for t in fields.get("NFTokens", []):
+                if t["NFToken"]["NFTokenID"] not in prev:
+                    return t["NFToken"]["NFTokenID"], t["NFToken"].get("URI", "")
     return None
-
 
 # =============================================================================
 # キャッシュAPI
@@ -333,7 +347,14 @@ def process_transactions(
             continue
 
         try:
-            result = extract_minted_nftoken_id(tx)
+            o = old_extract(tx)
+            n = extract_minted_nftoken_id(tx)
+            if (o or (None,))[0] != (n or (None,))[0]:
+                print(f"  MISMATCH old={o and o[0]} new={n and n[0]}")
+                # ページ分割のケース。metaを保存しておくと後で検証できる
+                json.dump(meta, open(f"mismatch_{tx['hash'][:8]}.json", "w"), indent=2)
+            
+            result = n
             if not result:
                 print(f"  [{tx_hash[:8]}...] Could not extract NFTokenID")
                 continue
