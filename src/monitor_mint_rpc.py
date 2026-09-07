@@ -269,9 +269,13 @@ def is_cacheable_uri(hex_uri: str) -> bool:
     except (ValueError, UnicodeDecodeError):
         return False
 
-    valid_schemes = ("ipfs://", "ar://", "http://", "https://")
-    if not decoded.startswith(valid_schemes):
-        preview = decoded[:80] if len(decoded) <= 80 else decoded[:80] + "..."
+    decoded_s = decoded.strip()
+    if decoded_s.startswith("{"):
+        return True
+
+    valid_schemes = ("ipfs://", "ar://", "http://", "https://", "data:")
+    if not decoded_s.lower().startswith(valid_schemes):
+        preview = decoded_s[:80] if len(decoded_s) <= 80 else decoded_s[:80] + "..."
         print(f"    Skipped: {preview}")
         return False
 
