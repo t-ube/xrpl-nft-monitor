@@ -241,11 +241,17 @@ def extract_minted_nftoken_id(tx):
         if item.get("LedgerEntryType") != "NFTokenPage":
             continue
 
+        # ページ分割時、隣接ページはリンクだけ更新されて NFTokens が変わらない。
+        # そのノードを数えると既存NFTが新規扱いになるので飛ばす。
+        prev_tokens = item.get("PreviousFields", {}).get("NFTokens")
+        if "NewFields" not in item and prev_tokens is None:
+            continue
+
         fields = item.get("NewFields") or item.get("FinalFields") or {}
         for t in fields.get("NFTokens", []):
             final_map[t["NFToken"]["NFTokenID"]] = t["NFToken"].get("URI", "")
 
-        for t in item.get("PreviousFields", {}).get("NFTokens", []):
+        for t in (prev_tokens or []):
             previous_ids.add(t["NFToken"]["NFTokenID"])
 
     new_ids = set(final_map) - previous_ids

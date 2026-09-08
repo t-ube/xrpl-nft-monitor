@@ -357,7 +357,8 @@ def process_transactions(
 
             nftoken_id, previous_uri, current_uri = result
             decoded = decode_nftoken_id(nftoken_id)
-            owner = tx.get("Account", "")
+            # Owner はNFTの現所有者。省略時は Account が自分のNFTを修正している。
+            owner = tx.get("Owner") or tx.get("Account", "")
 
             print(f"  [{tx_hash[:8]}...] NFT: {nftoken_id[:16]}... (issuer: {decoded.issuer[:8]}...)")
 
