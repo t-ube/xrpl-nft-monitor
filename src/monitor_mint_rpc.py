@@ -230,10 +230,41 @@ def get_ledger_transactions(ledger_index: int) -> tuple[list[dict], int]:
 
 def extract_minted_nftoken_id(tx):
     """
-    トランザクションのmetaから新規発行されたNFTokenIDとURIを抽出する
+    発行された NFTokenID と URI を取得する。
+
+    rippled は NFTokenMint のメタに nftoken_id を入れてくれる。これが正解。
+    AffectedNodes から導出する方法は、NFTokenPage の分割時に既存 NFT を
+    新規と誤認する（099_repair.sql の抽出バグ。実測 5.0%）。
+    メタに無い場合のフォールバックとしてのみ残す。
+
+    URI も tx.URI が一次情報なので、そちらを優先する。
     """
     meta = tx.get("meta", tx.get("metaData", {}))
 
+    nft_id = meta.get("nftoken_id")
+    if nft_id:
+        nft_id = nft_id.strip().upper()
+        uri = tx.get("URI", "") or _uri_from_nodes(meta).get(nft_id, "")
+        return nft_id, uri
+
+    return _derive_from_nodes(tx, meta)
+
+
+def _uri_from_nodes(meta):
+    """NFTokenPage から NFTokenID -> URI の対応を拾う。"""
+    out = {}
+    for node in meta.get("AffectedNodes", []):
+        item = node.get("CreatedNode") or node.get("ModifiedNode") or {}
+        if item.get("LedgerEntryType") != "NFTokenPage":
+            continue
+        fields = item.get("NewFields") or item.get("FinalFields") or {}
+        for t in fields.get("NFTokens", []):
+            out[t["NFToken"]["NFTokenID"]] = t["NFToken"].get("URI", "")
+    return out
+
+
+def _derive_from_nodes(tx, meta):
+    """meta.nftoken_id が無い場合のフォールバック（誤りうる）。"""
     final_map, previous_ids = {}, set()
 
     for node in meta.get("AffectedNodes", []):
@@ -259,7 +290,52 @@ def extract_minted_nftoken_id(tx):
         return None
 
     nft_id = new_ids.pop()
-    return nft_id, final_map[nft_id]
+    return nft_id, tx.get("URI", "") or final_map[nft_id]
+
+
+# =============================================================================
+# ミント時の売りオファー（XLS-52 NFTokenMintOffer）
+# =============================================================================
+# NFTokenMint に Amount を付けると、ミントと同時に売りオファーが作られる。
+# Destination を指定すると、その口座だけが受け入れられる。
+#
+# NFT 自体は Account が保有したままなので owner は Account で正しい。
+# ただし Destination は「誰に売るつもりか」を示すので、
+# 一次販売の相手を AcceptOffer を待たずに記録できる。
+#
+# Amount は一次販売の価格そのもの。
+# xrp.cafe のランチパッドは 0（代金を別途 Payment で受け取るため）だが、
+# 自前で売るプロジェクトは実売価格が入る。
+
+def first_memo(tx):
+    """
+    Memos[0] をデコードする。複数あっても最初の1件だけ使う。
+
+    ランチパッド経由のミントは "<コレクション名> NFT Mint by xrp.cafe"、
+    発行者の自前ミントは "NFT Mint by xrp.cafe" 単体になる。
+    この違いで一次販売かどうかが判定でき、名前も取り出せる。
+    """
+    for m in tx.get("Memos") or []:
+        data = (m.get("Memo") or {}).get("MemoData")
+        if not data:
+            continue
+        try:
+            return bytes.fromhex(data).decode("utf-8")
+        except (ValueError, UnicodeDecodeError):
+            return None
+    return None
+
+
+def parse_amount(amt):
+    """Amount を drops か IOU に分解する。"""
+    if amt is None:
+        return None, None, None, None
+    if isinstance(amt, str):
+        try:
+            return int(amt), None, None, None
+        except ValueError:
+            return None, None, None, None
+    return (None, amt.get("currency"), amt.get("value"), amt.get("issuer"))
 
 # =============================================================================
 # キャッシュAPI
@@ -351,9 +427,16 @@ def process_transactions(
             nftoken_id, uri = result
             decoded = decode_nftoken_id(nftoken_id)
 
+            # NFT は Account が保有する。Destination は売却先の指定であって
+            # 所有者ではない（XLS-52）
             owner = tx.get("Account", "")
+            drops, cur, val, iss = parse_amount(tx.get("Amount"))
 
-            print(f"  [{tx_hash[:8]}...] NFT: {nftoken_id[:16]}... (issuer: {decoded.issuer[:8]}...)")
+            dest = tx.get("Destination")
+            tag = f" -> {dest[:8]}..." if dest else ""
+            amt = f" @{drops / 1e6:g}XRP" if drops else ""
+            print(f"  [{tx_hash[:8]}...] NFT: {nftoken_id[:16]}... "
+                  f"(issuer: {decoded.issuer[:8]}...{tag}{amt})")
 
             # キャッシュ対象URIをバッファに追加
             if uri and is_cacheable_uri(uri):
@@ -373,6 +456,21 @@ def process_transactions(
                 "taxon": decoded.taxon,
                 "sequence": decoded.sequence,
                 "uri": uri,
+
+                # ミント同時オファー（XLS-52）
+                "destination": tx.get("Destination"),
+                "offer_amount_drops": drops,
+                "offer_amount_currency": cur,
+                "offer_amount_value": val,
+                "offer_amount_issuer": iss,
+
+                # decode 済みだが従来は捨てていたもの
+                "transfer_fee": decoded.transfer_fee,
+
+                # プラットフォーム識別。Issuer の有無では判定できない
+                # （発行者が xrp.cafe の画面から自前ミントするケースがある）
+                "source_tag": tx.get("SourceTag"),
+                "memo": first_memo(tx),
             })
 
             processed += 1
