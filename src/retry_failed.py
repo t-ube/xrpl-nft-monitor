@@ -17,6 +17,7 @@ res = supabase.table('uri_cache') \
     .select('uri, retry_count') \
     .eq('status', 'failed') \
     .lt('retry_count', 3) \
+    .order('created_at', desc=False) \
     .limit(50) \
     .execute()
 
@@ -25,11 +26,15 @@ if not res.data:
     exit()
 
 hex_uris = [item['uri'] for item in res.data]
+now = datetime.now(timezone.utc).isoformat()
 
 # カウント増加
 for item in res.data:
     supabase.table('uri_cache') \
-        .update({'retry_count': item['retry_count'] + 1}) \
+        .update({
+            'retry_count': item['retry_count'] + 1,
+            'last_retry_at': now,
+        }) \
         .eq('uri', item['uri']) \
         .execute()
 
