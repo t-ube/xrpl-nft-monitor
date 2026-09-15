@@ -19,7 +19,7 @@ res = supabase.table('uri_cache') \
     .eq('status', 'failed') \
     .lt('retry_count', 3) \
     .order('created_at', desc=True) \
-    .limit(50) \
+    .limit(10) \
     .execute()
 
 if not res.data:
