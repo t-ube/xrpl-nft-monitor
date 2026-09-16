@@ -11,26 +11,27 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 CACHE_API_URL = os.environ.get("CACHE_API_URL")
 
+RETRY_INTERVAL = timedelta(minutes=2)
+MAX_RETRY = 3
+BATCH_SIZE = 10
+
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# 失敗したURIを取得（古いものから）
-res = supabase.table('uri_cache') \
-    .select('uri, retry_count') \
-    .eq('status', 'failed') \
-    .lt('retry_count', 3) \
-    .order('created_at', desc=True) \
-    .limit(10) \
-    .execute()
+now_dt = datetime.now(timezone.utc)
+now = now_dt.isoformat()
 
-if not res.data:
-    print("No failed URIs")
+rows = supabase.rpc('pick_retry_targets', {
+    'p_now': now,
+    'p_limit': BATCH_SIZE,
+}).execute().data
+
+if not rows:
+    print("No failed URIs ready for retry")
     exit()
 
-hex_uris = [item['uri'] for item in res.data]
-now = datetime.now(timezone.utc).isoformat()
+hex_uris = [item['uri'] for item in rows]
 
-# カウント増加
-for item in res.data:
+for item in rows:
     supabase.table('uri_cache') \
         .update({
             'retry_count': item['retry_count'] + 1,
