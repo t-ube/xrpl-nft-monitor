@@ -74,9 +74,9 @@ def _unique_rpc_endpoints() -> list[str]:
     XRPL_RPC (QuickNode等) は最後のfallback。
     """
     candidates = [
+        os.environ.get("XRPL_RPC"),
         "https://xrplcluster.com/",
         "https://s2.ripple.com:51234/",
-        os.environ.get("XRPL_RPC"),
     ]
 
     out: list[str] = []
