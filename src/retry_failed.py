@@ -3,7 +3,7 @@ import os
 import requests
 from supabase import create_client
 from dotenv import load_dotenv
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 load_dotenv()
 
