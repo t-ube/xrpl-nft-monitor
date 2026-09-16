@@ -53,7 +53,7 @@ EXPECTED_PARSER_VERSION = int(
     os.environ.get("PAYMENT_PARSER_VERSION", "4")
 )
 MAX_LEDGERS_PER_RUN = int(
-    os.environ.get("MAX_LEDGERS_PER_RUN", "500")
+    os.environ.get("MAX_LEDGERS_PER_RUN", "2000")
 )
 PARALLEL_WORKERS = int(
     os.environ.get("PARALLEL_WORKERS", "5")
