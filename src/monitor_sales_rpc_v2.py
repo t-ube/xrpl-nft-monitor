@@ -45,9 +45,9 @@ CACHE_API_URL = (os.environ.get("CACHE_API_URL") or "").rstrip("/")
 def _unique_rpc_endpoints() -> list[str]:
     # XRPL_RPC が s2 を指していても fallback が同じURLにならないようにする。
     candidates = [
-        os.environ.get("XRPL_RPC"),
         "https://xrplcluster.com/",
         "https://s2.ripple.com:51234/",
+        os.environ.get("XRPL_RPC"),
     ]
     out: list[str] = []
     seen: set[str] = set()
@@ -69,7 +69,7 @@ SALE_TABLE = "nft_sale_history_v2"
 STATE_KEY = os.environ.get("SALE_V2_STATE_KEY", "last_sale_v2_ledger_index")
 
 EXPECTED_PARSER_VERSION = int(os.environ.get("SALE_PARSER_VERSION", "4"))
-MAX_LEDGERS_PER_RUN = int(os.environ.get("MAX_LEDGERS_PER_RUN", "2000"))
+MAX_LEDGERS_PER_RUN = int(os.environ.get("MAX_LEDGERS_PER_RUN", "500"))
 PARALLEL_WORKERS = int(os.environ.get("PARALLEL_WORKERS", "5"))
 CHECKPOINT_INTERVAL = int(os.environ.get("CHECKPOINT_INTERVAL", "30"))
 
