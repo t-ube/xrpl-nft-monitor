@@ -42,10 +42,28 @@ SUPABASE_URL = (os.environ.get("SUPABASE_URL") or "").rstrip("/")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY") or ""
 CACHE_API_URL = (os.environ.get("CACHE_API_URL") or "").rstrip("/")
 
-XRPL_RPC_ENDPOINTS = [
-    os.environ.get("XRPL_RPC", "https://xrplcluster.com/"),
-    "https://s2.ripple.com:51234/",
-]
+def _unique_rpc_endpoints() -> list[str]:
+    # XRPL_RPC が s2 を指していても fallback が同じURLにならないようにする。
+    candidates = [
+        os.environ.get("XRPL_RPC"),
+        "https://xrplcluster.com/",
+        "https://s2.ripple.com:51234/",
+    ]
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in candidates:
+        if not value:
+            continue
+        url = value.strip()
+        key = url.rstrip("/")
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(url)
+    return out
+
+
+XRPL_RPC_ENDPOINTS = _unique_rpc_endpoints()
 
 SALE_TABLE = "nft_sale_history_v2"
 STATE_KEY = os.environ.get("SALE_V2_STATE_KEY", "last_sale_v2_ledger_index")
@@ -304,6 +322,10 @@ def get_validated_ledger_index() -> int:
 
 
 def get_ledger_transactions(ledger_index: int) -> tuple[list[dict], int]:
+    """
+    1つのendpointで一時的な transport error / XRPL error / empty payload が出ても
+    リトライし、それでも駄目なら次のendpointへfallbackする。
+    """
     last_error: Exception | None = None
 
     for rpc_url in XRPL_RPC_ENDPOINTS:
@@ -323,23 +345,64 @@ def get_ledger_transactions(ledger_index: int) -> tuple[list[dict], int]:
                     timeout=XRPL_TIMEOUT,
                 )
 
-                if response.status_code in (429, 503):
-                    wait = 3 * (attempt + 1)
-                    print(
-                        f"    Ledger {ledger_index} retry {attempt + 1}: "
-                        f"HTTP {response.status_code} ({rpc_url})"
+                if response.status_code in (429, 500, 502, 503, 504):
+                    last_error = RuntimeError(
+                        f"HTTP {response.status_code}"
                     )
-                    time.sleep(wait)
-                    continue
+                    if attempt < 2:
+                        wait = 3 * (attempt + 1)
+                        print(
+                            f"    Ledger {ledger_index} retry {attempt + 1}: "
+                            f"HTTP {response.status_code} ({rpc_url})"
+                        )
+                        time.sleep(wait)
+                        continue
+                    break
 
                 response.raise_for_status()
-                result = response.json().get("result", {})
-                ledger = result.get("ledger", result.get("ledger_data", {}))
 
-                if not ledger:
-                    raise RuntimeError(
-                        f"ledger payload missing for {ledger_index}"
+                body = response.json()
+                result = body.get("result", {}) or {}
+
+                # XRPL JSON-RPCはHTTP 200でも result.error を返すことがある。
+                rpc_error = result.get("error")
+                if rpc_error:
+                    detail = (
+                        result.get("error_message")
+                        or result.get("error_exception")
+                        or result.get("error_code")
+                        or rpc_error
                     )
+                    last_error = RuntimeError(
+                        f"XRPL {rpc_error}: {detail}"
+                    )
+                    if attempt < 2:
+                        wait = 2 * (attempt + 1)
+                        print(
+                            f"    Ledger {ledger_index} retry {attempt + 1}: "
+                            f"XRPL {rpc_error} ({rpc_url})"
+                        )
+                        time.sleep(wait)
+                        continue
+                    break
+
+                ledger = result.get("ledger") or result.get("ledger_data")
+                if not ledger:
+                    # 一時的に空レスポンスが返る場合も、即失敗せずretry/fallback。
+                    preview = str(result)[:300]
+                    last_error = RuntimeError(
+                        f"ledger payload missing for {ledger_index}; "
+                        f"result={preview}"
+                    )
+                    if attempt < 2:
+                        wait = 2 * (attempt + 1)
+                        print(
+                            f"    Ledger {ledger_index} retry {attempt + 1}: "
+                            f"empty ledger payload ({rpc_url})"
+                        )
+                        time.sleep(wait)
+                        continue
+                    break
 
                 return (
                     ledger.get("transactions", []),
@@ -360,14 +423,25 @@ def get_ledger_transactions(ledger_index: int) -> tuple[list[dict], int]:
                     )
                     time.sleep(wait)
                     continue
-                print(
-                    f"    Ledger {ledger_index}: {rpc_url} failed, "
-                    "trying next endpoint"
-                )
                 break
+
             except Exception as exc:
                 last_error = exc
+                # JSON decode等も一時障害の可能性があるので同endpointで再試行。
+                if attempt < 2:
+                    wait = 2 * (attempt + 1)
+                    print(
+                        f"    Ledger {ledger_index} retry {attempt + 1}: "
+                        f"{type(exc).__name__}: {exc} ({rpc_url})"
+                    )
+                    time.sleep(wait)
+                    continue
                 break
+
+        print(
+            f"    Ledger {ledger_index}: {rpc_url} failed, "
+            "trying next endpoint"
+        )
 
     raise last_error or RuntimeError(
         f"All RPC endpoints failed for ledger {ledger_index}"
@@ -585,6 +659,7 @@ def main() -> int:
     print(f"Target table: {SALE_TABLE}")
     print(f"State key: {STATE_KEY}")
     print(f"Expected parser version: {EXPECTED_PARSER_VERSION}")
+    print(f"RPC endpoints: {XRPL_RPC_ENDPOINTS}")
 
     # 初回はbackfill済みv2 tableからbootstrap。
     last_ledger_index = get_or_bootstrap_last_ledger()
