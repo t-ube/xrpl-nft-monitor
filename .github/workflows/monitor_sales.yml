@@ -25,4 +25,5 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           CACHE_API_URL: ${{ secrets.CACHE_API_URL }}
+          XRPL_RPC: ${{ secrets.XRPL_RPC }}
         run: python src/monitor_sales_rpc_v2.py
