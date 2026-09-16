@@ -69,7 +69,7 @@ SALE_TABLE = "nft_sale_history_v2"
 STATE_KEY = os.environ.get("SALE_V2_STATE_KEY", "last_sale_v2_ledger_index")
 
 EXPECTED_PARSER_VERSION = int(os.environ.get("SALE_PARSER_VERSION", "4"))
-MAX_LEDGERS_PER_RUN = int(os.environ.get("MAX_LEDGERS_PER_RUN", "500"))
+MAX_LEDGERS_PER_RUN = int(os.environ.get("MAX_LEDGERS_PER_RUN", "2000"))
 PARALLEL_WORKERS = int(os.environ.get("PARALLEL_WORKERS", "5"))
 CHECKPOINT_INTERVAL = int(os.environ.get("CHECKPOINT_INTERVAL", "30"))
 
