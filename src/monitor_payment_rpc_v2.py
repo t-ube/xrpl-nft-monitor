@@ -53,7 +53,7 @@ EXPECTED_PARSER_VERSION = int(
     os.environ.get("PAYMENT_PARSER_VERSION", "4")
 )
 MAX_LEDGERS_PER_RUN = int(
-    os.environ.get("MAX_LEDGERS_PER_RUN", "2000")
+    os.environ.get("MAX_LEDGERS_PER_RUN", "500")
 )
 PARALLEL_WORKERS = int(
     os.environ.get("PARALLEL_WORKERS", "5")
@@ -74,9 +74,9 @@ def _unique_rpc_endpoints() -> list[str]:
     XRPL_RPC (QuickNode等) は最後のfallback。
     """
     candidates = [
-        os.environ.get("XRPL_RPC"),
         "https://xrplcluster.com/",
         "https://s2.ripple.com:51234/",
+        os.environ.get("XRPL_RPC"),
     ]
 
     out: list[str] = []
